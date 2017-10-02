@@ -29,7 +29,7 @@ from flask import Blueprint, abort, jsonify, request
 from .factory import db
 from .fsdb import get_all_workflows
 from .models import User
-from .tasks import run_yadage_workflow
+from .tasks import run_yadage_workflow, run_cwl_workflow
 
 organization_to_queue = {
     'alice': 'alice-queue',
@@ -216,6 +216,85 @@ def yadage_endpoint():  # noqa
             resultobject = run_yadage_workflow.apply_async(
                 args=[request.json],
                 queue='yadage-{}'.format(queue)
+            )
+            return jsonify({'message': 'Workflow successfully launched',
+                            'workflow_id': resultobject.id}), 200
+
+    except (KeyError, ValueError):
+        traceback.print_exc()
+        abort(400)
+
+
+@restapi_blueprint.route('/cwl', methods=['POST'])
+def cwl_endpoint():
+    # FIXME: review for cwl specific differences
+    r"""Create a new cwl workflow.
+
+    ---
+    post:
+      summary: Creates a new cwl workflow.
+      description: >-
+        This resource is expecting JSON data with all the necessary
+        informations to instantiate a  workflow.
+      operationId: create_cwl_workflow
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - name: organization
+          in: query
+          description: Required. Organization which the worklow belongs to.
+          required: true
+          type: string
+        - name: user
+          in: query
+          description: Required. UUID of workflow owner.
+          required: true
+          type: string
+        - name: cwl_payload
+          in: body
+          description: Specification with necessary data to instantiate a
+            cwl workflow.
+          required: true
+          schema:
+            type: object
+            properties:
+              toplevel:
+                type: string
+              workflow:
+                type: string
+              nparallel:
+                type: integer
+              preset_pars:
+                type: object
+      responses:
+        200:
+          description: >-
+            Request succeeded. The workflow has been instantiated.
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              workflow_id:
+                type: string
+          examples:
+            application/json:
+              {
+                "message": "Workflow successfully launched",
+                "workflow_id": "cdcf48b1-c2f3-4693-8230-b066e088c6ac"
+              }
+        400:
+          description: >-
+            Request failed. The incoming data specification seems malformed
+    """
+    try:
+        if request.json:
+            queue = organization_to_queue[request.args.get('organization')]
+            resultobject = run_cwl_workflow.apply_async(
+                args=[request.json],
+                queue='cwl-{}'.format(queue)
             )
             return jsonify({'message': 'Workflow successfully launched',
                             'workflow_id': resultobject.id}), 200
